@@ -1,0 +1,262 @@
+CREATE DATABASE PROJECT_PART2;
+CREATE SCHEMA PROJECT_PART2.STAGE_DATA;
+
+CREATE OR REPLACE TABLE Customer_Dim (
+    CustomerID INT PRIMARY KEY,
+    First_Name VARCHAR(255),
+    Last_Name VARCHAR(255),
+    Email VARCHAR(255),
+    Phone VARCHAR(20),
+    CustAddress VARCHAR(255),
+    CustCity VARCHAR(100),
+    CustState VARCHAR(50),
+    CustZip VARCHAR(50)
+);
+
+CREATE OR REPLACE TABLE Product_Dim (
+    ProductID INT PRIMARY KEY,
+    Brand VARCHAR(200),
+    Name VARCHAR(1000),
+    Description VARCHAR(5000),
+    Price DECIMAL(10, 2),
+    MSRP DECIMAL(10, 2),
+    Cost DECIMAL(10, 2)
+);
+
+CREATE OR REPLACE TABLE Sales_Fact (
+    OrderID INT PRIMARY KEY,
+    OrderAmt DECIMAL(12, 2),
+    OrderQty INT,
+    CustomerID INT,
+    OrderDT TIMESTAMP,
+    FOREIGN KEY (CustomerID) REFERENCES Customer_Dim(CustomerID)
+);
+
+CREATE OR REPLACE TABLE OrderDetail_Dim (
+    OrderDetailID INT PRIMARY KEY,
+    ProductID INT,
+    OrderID INT,
+    FOREIGN KEY (ProductID) REFERENCES Product_Dim(ProductID),
+    FOREIGN KEY (OrderID) REFERENCES Sales_Fact(OrderID)
+);
+
+-- Partially data loaded for product dimension table, below are the remaining data added manually. 
+
+Insert into Product_Dim (
+ProductID,Brand, Name, Description, Price, MSRP, Cost)
+Values (1, 'TechWave', 'SpeedBoost Wireless Charging Pad', 'Fast efficient wireless power', 39.65, 44.41, 14.67),
+(6, 'EcoEra', 'GreenGrow Indoor Herb Garden', 'Sustainable fresh home gardening', 209.99, 235.19,77.7
+), (8, 'EcoEra', 'EarthGuard Plant-Based Cleaner', 'Natural powerful cleaning solution', 17.98, 20.14, 6.65
+), (10, 'EcoEra', 'BioBlend Organic Protein Powder', 'Clean plant-powered nutrition boost', 89.99, 100.79, 33.3
+), (12, 'LuxeLife', 'SilkSoothe Sleep Mask Set', 'Luxurious restful sleep experience', 45.99, 51.51, 17.02
+);
+
+--Data Cleaning/ Pre-Processing in Stage environment.
+
+-- Checking the data shape of the each table. 
+SELECT COUNT(*) AS total_rows FROM customer_dim;
+SELECT COUNT(*) AS total_rows FROM product_dim;
+SELECT COUNT(*) AS total_rows FROM orderdetail_dim;
+SELECT COUNT(*) AS total_rows FROM sales_fact;
+
+-- Checking for Missing Values.
+
+SELECT 
+    'Customer_Dim' AS Table_Name,
+    SUM(CASE WHEN First_Name IS NULL THEN 1 ELSE 0 END) AS Missing_First_Name,
+    SUM(CASE WHEN Last_Name IS NULL THEN 1 ELSE 0 END) AS Missing_Last_Name,
+    SUM(CASE WHEN Email IS NULL THEN 1 ELSE 0 END) AS Missing_Email,
+    SUM(CASE WHEN Phone IS NULL THEN 1 ELSE 0 END) AS Missing_Phone,
+    SUM(CASE WHEN CustAddress IS NULL THEN 1 ELSE 0 END) AS Missing_CustAddress,
+    SUM(CASE WHEN CustCity IS NULL THEN 1 ELSE 0 END) AS Missing_CustCity,
+    SUM(CASE WHEN CustState IS NULL THEN 1 ELSE 0 END) AS Missing_CustState,
+    SUM(CASE WHEN CustZip IS NULL THEN 1 ELSE 0 END) AS Missing_CustZip
+FROM Customer_Dim;
+
+--dropping columns phone and address as these are not relevant for our dashboard design.
+ALTER TABLE CUSTOMER_DIM
+DROP COLUMN Phone;
+
+ALTER TABLE CUSTOMER_DIM
+DROP COLUMN CustAddress;
+
+-- fill missing values with "Unknown" for CustState, City and Zip.
+UPDATE Customer_Dim
+SET CustCity = COALESCE(CustCity, 'Unknown'),
+    CustState = COALESCE(CustState, 'Unknown'),
+    CustZip = COALESCE(CustZip, 'Unknown')
+WHERE CustCity IS NULL OR CustState IS NULL OR CustZip IS NULL;
+
+--Rechecking the customer_dim table for missing value.
+SELECT 
+    'Customer_Dim' AS Table_Name,
+    SUM(CASE WHEN First_Name IS NULL THEN 1 ELSE 0 END) AS Missing_First_Name,
+    SUM(CASE WHEN Last_Name IS NULL THEN 1 ELSE 0 END) AS Missing_Last_Name,
+    SUM(CASE WHEN Email IS NULL THEN 1 ELSE 0 END) AS Missing_Email,
+    SUM(CASE WHEN CustCity IS NULL THEN 1 ELSE 0 END) AS Missing_CustCity,
+    SUM(CASE WHEN CustState IS NULL THEN 1 ELSE 0 END) AS Missing_CustState,
+    SUM(CASE WHEN CustZip IS NULL THEN 1 ELSE 0 END) AS Missing_CustZip
+FROM Customer_Dim;
+
+SELECT CustCity,
+COUNT(*) AS count
+FROM customer_dim
+GROUP BY CustCity;
+
+UPDATE customer_dim
+SET CustCity = 'Texas'
+WHERE CustCity IN ('TX');
+
+UPDATE customer_dim
+SET CustCity = 'California'
+WHERE CustCity IN ('CA');
+
+UPDATE customer_dim
+SET CustCity = 'Arizona'
+WHERE CustCity IN ('AZ');
+
+-- Let's check the format of the email in the customer_dim Table.
+SELECT Email,
+CASE
+    WHEN Email LIKE '%@%.%' THEN 'Valid Email Format'
+        ELSE 'Invalid Email Format'
+    END AS email_format_check
+FROM 
+    CUSTOMER_DIM;
+
+SELECT 'Product_Dim' AS TABLE_NAME,
+SUM(CASE WHEN ProductID IS NULL THEN 1 ELSE 0 END) AS MISSING_PRODUCTID,
+SUM(CASE WHEN Brand IS NULL THEN 1 ELSE 0 END) AS MISSING_BRAND,
+SUM(CASE WHEN Name IS NULL THEN 1 ELSE 0 END) AS MISSING_NAME,
+SUM(CASE WHEN Description IS NULL THEN 1 ELSE 0 END) AS MISSING_DESC,
+SUM(CASE WHEN Price IS NULL THEN 1 ELSE 0 END) AS MISSING_PRICE,
+SUM(CASE WHEN MSRP IS NULL THEN 1 ELSE 0 END) AS MISSING_MSRP,
+SUM(CASE WHEN Cost IS NULL THEN 1 ELSE 0 END) AS MISSING_COST
+FROM PRODUCT_DIM;
+
+-- ZERO MISSING VALUES FOR PRODUCT DIM TABLE.
+
+SELECT 'Sales_fact' AS TABLE_NAME,
+SUM(CASE WHEN OrderID IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERID,
+SUM(CASE WHEN OrderAmt IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERAMT,
+SUM(CASE WHEN OrderQty IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERQTY,
+SUM(CASE WHEN CustomerID IS NULL THEN 1 ELSE 0 END) AS MISSING_CUSTOMERID,
+SUM(CASE WHEN OrderDT IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERDT
+FROM SALES_FACT;
+
+-- SALES FACT TABLE HAS 0 MISSING VALUES.
+
+SELECT 'OrderDetail_Dim' AS TABLE_NAME,
+SUM(CASE WHEN OrderDetailID IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERDETAILID,
+SUM(CASE WHEN ProductID IS NULL THEN 1 ELSE 0 END) AS MISSING_PRODUCTID,
+SUM(CASE WHEN OrderID IS NULL THEN 1 ELSE 0 END) AS MISSING_ORDERID
+FROM ORDERDETAIL_DIM;
+
+-- ORDER DETAIL DIM TABLE HAS 0 MISSING VALUES.
+
+-- Checking for duplicate values in customer_dim table
+SELECT
+    'Customer_Dim' AS Table_Name,
+    COUNT(*) AS Total_Rows,
+    COUNT(*) - COUNT(DISTINCT Email) AS Duplicate_Email,
+FROM Customer_Dim;
+
+-- Checking for duplicate values in Product_dim table.
+SELECT
+    'Product_Dim' AS Table_name,
+    COUNT(*) - COUNT(DISTINCT ProductID) AS DUPLICATE_ProductID
+FROM PRODUCT_DIM;
+
+-- Checking for duplicate values in Orderdetail_dim table.
+SELECT
+    'OrderDetail_Dim' as Table_Name,
+   COUNT(*) - COUNT(DISTINCT OrderDetailID) AS DUPLICATE_OrderDetailID,
+   COUNT(*) - COUNT(DISTINCT orderid) AS DUPLICATE_ORDERID
+from orderdetail_dim;
+
+-- Creating 3 new columns by splitting ORDERDT into Year, Month, Day, Time and AM_PM.
+
+ALTER TABLE SALES_FACT
+ADD OR COLUMN OrderDT_Year INT;
+
+ALTER TABLE SALES_FACT
+ADD COLUMN OrderDT_Month INT;
+
+ALTER TABLE SALES_FACT
+ADD COLUMN OrderDT_Day INT;
+
+ALTER TABLE SALES_FACT
+ADD COLUMN OrderDT_Time Varchar(8);
+
+ALTER TABLE SALES_FACT
+ADD COLUMN OrderDT_AM_PM Varchar(4);
+
+UPDATE SALES_FACT
+SET 
+    OrderDT_Year = EXTRACT(YEAR FROM OrderDT),
+    OrderDT_Month = EXTRACT(MONTH FROM OrderDT),
+    OrderDT_Day = EXTRACT(DAY FROM OrderDT),
+    OrderDT_Time = TO_CHAR(OrderDT, 'HH24:MI:SS'), -- Format time as HH:MI:SS
+    OrderDT_AM_PM = TO_CHAR(OrderDT, 'AM');
+
+ALTER TABLE SALES_FACT
+DROP COLUMN ORDERDT;
+
+SELECT * FROM sales_fact;
+
+ALTER TABLE SALES_FACT
+ADD COLUMN TOTAL_SALES DECIMAL(10, 2);
+
+UPDATE SALES_FACT
+SET TOTAL_SALES = (OrderAmt * OrderQty);
+
+SELECT * FROM SALES_FACT;
+
+-- replacing the OrderDT_Month numbers by names to make the dataset more readable and esy to interpret.
+
+ALTER TABLE SALES_FACT
+ADD COLUMN OrderDT_Month_Name VARCHAR(20);
+
+UPDATE SALES_FACT
+SET 
+    OrderDT_Month_Name = 
+    CASE 
+        WHEN OrderDT_Month = 1 THEN 'January'
+        WHEN OrderDT_Month = 2 THEN 'February'
+        WHEN OrderDT_Month = 3 THEN 'March'
+        WHEN OrderDT_Month = 4 THEN 'April'
+        WHEN OrderDT_Month = 5 THEN 'May'
+        WHEN OrderDT_Month = 6 THEN 'June'
+        WHEN OrderDT_Month = 7 THEN 'July'
+        WHEN OrderDT_Month = 8 THEN 'August'
+        WHEN OrderDT_Month = 9 THEN 'September'
+        WHEN OrderDT_Month = 10 THEN 'October'
+        WHEN OrderDT_Month = 11 THEN 'November'
+        WHEN OrderDT_Month = 12 THEN 'December'
+        ELSE NULL
+    END;
+
+-- dropping the uneccesary column (OrderDT_Month).
+
+ALTER TABLE sales_fact
+DROP COLUMN OrderDT_Month;
+
+--Add a DiscountRate column to the Product_dim table
+ALTER TABLE PRODUCT_DIM
+ADD COLUMN DiscountRate DECIMAL(10, 2);
+
+-- Update the DiscountRate column with the calculated discount rate
+UPDATE PRODUCT_DIM
+SET DiscountRate = ((MSRP - Price) / MSRP) * 100;
+
+-- Check the updated data
+SELECT * FROM PRODUCT_DIM;
+
+ALTER TABLE Product_Dim
+ADD COLUMN MarkupPercentage DECIMAL(10, 2);
+
+UPDATE Product_Dim
+SET MarkupPercentage = ((Price - Cost) / Cost) * 100;
+
+SELECT * FROM PRODUCT_DIM;
+
